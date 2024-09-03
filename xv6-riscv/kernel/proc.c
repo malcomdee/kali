@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "stddef.h"
 
 struct cpu cpus[NCPU];
 
@@ -692,4 +693,34 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+uint64 sys_getppid(void) {
+    struct proc *p = myproc(); 
+    return p->parent ? p->parent->pid : -1; 
+}
+
+uint64 sys_getancestor(void) {
+    int n;
+
+    
+    argint(0, &n);
+
+    
+    if (n <= 0) {
+        return -1;
+    }
+
+    struct proc *p = myproc(); 
+
+   
+    for (int i = 0; i < n; i++) {
+        if (p->parent == 0) { 
+            return -1;
+        }
+        p = p->parent;
+    }
+
+    
+    return p->pid;
 }
