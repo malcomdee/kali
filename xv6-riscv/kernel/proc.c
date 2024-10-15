@@ -107,14 +107,12 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
-allocproc(void)
-{
+static struct proc* allocproc(void) {
   struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
+  for (p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if(p->state == UNUSED) {
+    if (p->state == UNUSED) {
       goto found;
     } else {
       release(&p->lock);
@@ -126,29 +124,31 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+  // Inicializar prioridad y boost
+  p->priority = 0;  // Menor número = mayor prioridad
+  p->boost = 1;
+
+  // Asignar trapframe y tabla de páginas
+  if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
     freeproc(p);
     release(&p->lock);
     return 0;
   }
 
-  // An empty user page table.
   p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
+  if (p->pagetable == 0) {
     freeproc(p);
     release(&p->lock);
     return 0;
   }
 
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
   return p;
 }
+
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -277,40 +277,30 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
-int
-fork(void)
-{
-  int i, pid;
+int fork(void) {
+  int pid;
   struct proc *np;
   struct proc *p = myproc();
 
-  // Allocate process.
-  if((np = allocproc()) == 0){
+  if ((np = allocproc()) == 0) {
     return -1;
   }
 
-  // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
   }
   np->sz = p->sz;
-
-  // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
-
-  // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
-  // increment reference counts on open file descriptors.
-  for(i = 0; i < NOFILE; i++)
-    if(p->ofile[i])
+  for (int i = 0; i < NOFILE; i++)
+    if (p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
-
   pid = np->pid;
 
   release(&np->lock);
@@ -325,6 +315,8 @@ fork(void)
 
   return pid;
 }
+
+
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
@@ -442,44 +434,42 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void
-scheduler(void)
-{
+void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
 
   c->proc = 0;
-  for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
+  for (;;) {
+    // Activar interrupciones para evitar deadlocks
     intr_on();
 
+    // Actualizar prioridades de todos los procesos RUNNABLE antes de planificar
+    update_priorities();
+
     int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
+    for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+      if (p->state == RUNNABLE) {
+        // Ejecutar el proceso seleccionado
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
+        // El proceso ha terminado su turno de ejecución.
         c->proc = 0;
         found = 1;
       }
       release(&p->lock);
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
+
+    if (found == 0) {
+      // No hay procesos para ejecutar, esperar interrupción.
       intr_on();
       asm volatile("wfi");
     }
   }
 }
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -724,3 +714,22 @@ uint64 sys_getancestor(void) {
     
     return p->pid;
 }
+void update_priorities() {
+  struct proc *p;
+
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state != ZOMBIE) {  // Excluir procesos zombies
+      p->priority += p->boost;
+
+      // Cambiar el boost según la prioridad
+      if (p->priority >= 9) {
+        p->boost = -1;
+      } else if (p->priority <= 0) {
+        p->boost = 1;
+      }
+    }
+    release(&p->lock);
+  }
+}
+
