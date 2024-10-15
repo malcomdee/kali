@@ -90,7 +90,7 @@ Se modificó el `Makefile` para configurar el uso de una única CPU en lugar de 
 
 ---
 
-## **Explicación del Archivo de Prueba**
+## **Explicación del Archivo de Prueba test_prioritys**
 
 ```c
 #include "kernel/types.h"
