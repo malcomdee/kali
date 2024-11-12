@@ -449,3 +449,66 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+
+
+
+int
+mprotect(pagetable_t pagetable, uint64 addr, int len)
+{
+    uint64 a, last;
+    pte_t *pte;
+
+    // Validar parámetros
+    if(len <= 0 || addr % PGSIZE != 0)
+        return -1;
+
+    a = addr;
+    last = addr + len * PGSIZE;
+
+    for(; a < last; a += PGSIZE){
+        // Obtener el PTE
+        pte = walk(pagetable, a, 0);
+        if(pte == 0)
+            return -1; // Página no asignada
+        if(!(*pte & PTE_V))
+            return -1; // Página no es válida
+
+        // Desactivar el bit de escritura
+        *pte &= ~PTE_W;
+    }
+
+    // Actualizar la TLB
+    sfence_vma();
+    return 0;
+}
+
+int
+munprotect(pagetable_t pagetable, uint64 addr, int len)
+{
+    uint64 a, last;
+    pte_t *pte;
+
+    // Validar parámetros
+    if(len <= 0 || addr % PGSIZE != 0)
+        return -1;
+
+    a = addr;
+    last = addr + len * PGSIZE;
+
+    for(; a < last; a += PGSIZE){
+        // Obtener el PTE
+        pte = walk(pagetable, a, 0);
+        if(pte == 0)
+            return -1; // Página no asignada
+        if(!(*pte & PTE_V))
+            return -1; // Página no es válida
+
+        // Activar el bit de escritura
+        *pte |= PTE_W;
+    }
+
+    // Actualizar la TLB
+    sfence_vma();
+    return 0;
+}

@@ -6,6 +6,13 @@
 #include "spinlock.h"
 #include "proc.h"
 
+
+
+int mprotect(pagetable_t pagetable, uint64 addr, int len);
+int munprotect(pagetable_t pagetable, uint64 addr, int len);
+
+
+
 uint64
 sys_exit(void)
 {
@@ -90,4 +97,30 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+
+
+uint64
+sys_mprotect(void)
+{
+    uint64 addr;
+    int len;
+
+    argaddr(0, &addr); // Eliminar la comparación con el valor de retorno
+    argint(1, &len);
+
+    return mprotect(myproc()->pagetable, addr, len);
+}
+
+uint64
+sys_munprotect(void)
+{
+    uint64 addr;
+    int len;
+
+    argaddr(0, &addr);
+    argint(1, &len);
+
+    return munprotect(myproc()->pagetable, addr, len);
 }

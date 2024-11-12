@@ -142,6 +142,7 @@ UPROGS=\
 	$U/_getppid\
 	$U/_yosoytupadre\
 	$U/_test_priority\
+	$U/_protegido\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
