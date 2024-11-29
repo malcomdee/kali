@@ -24,3 +24,5 @@
 #define SYS_getancestor 23 
 #define SYS_mprotect 24
 #define SYS_munprotect 25 
+#define SYS_chmod 26 // Ajusta el número según corresponda
+

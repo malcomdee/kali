@@ -207,7 +207,7 @@ ialloc(uint dev, short type)
     dip = (struct dinode*)bp->data + inum%IPB;
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
-      dip->type = type;
+      dip->type = SET_TYPE_PERM(type, PERM_READ | PERM_WRITE); // Permisos por defecto
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
       return iget(dev, inum);
@@ -217,6 +217,8 @@ ialloc(uint dev, short type)
   printf("ialloc: no inodes\n");
   return 0;
 }
+
+
 
 // Copy a modified in-memory inode to disk.
 // Must be called after every change to an ip->xxx field
@@ -235,10 +237,11 @@ iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
-  memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
+  memmove(dip->addrs, ip->addrs, sizeof(dip->addrs));
   log_write(bp);
   brelse(bp);
 }
+
 
 // Find the inode with number inum on device dev
 // and return the in-memory copy. Does not lock
@@ -459,10 +462,12 @@ stati(struct inode *ip, struct stat *st)
 {
   st->dev = ip->dev;
   st->ino = ip->inum;
-  st->type = ip->type;
+  st->type = GET_TYPE(ip->type);
   st->nlink = ip->nlink;
   st->size = ip->size;
+  st->perm = GET_PERM(ip->type); // Agregar el campo perm
 }
+
 
 // Read data from inode.
 // Caller must hold ip->lock.
@@ -660,7 +665,7 @@ namex(char *path, int nameiparent, char *name)
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
-    if(ip->type != T_DIR){
+    if(GET_TYPE(ip->type) != T_DIR){
       iunlockput(ip);
       return 0;
     }
@@ -682,6 +687,7 @@ namex(char *path, int nameiparent, char *name)
   }
   return ip;
 }
+
 
 struct inode*
 namei(char *path)

@@ -40,3 +40,4 @@ entry("getppid");
 entry("getancestor");
 entry("mprotect");
 entry("munprotect");
+entry("chmod");

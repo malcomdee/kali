@@ -117,8 +117,17 @@ fileread(struct file *f, uint64 addr, int n)
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
       return -1;
     r = devsw[f->major].read(1, addr, n);
-  } else if(f->type == FD_INODE){
+  }  else if(f->type == FD_INODE){
     ilock(f->ip);
+
+    ushort perm = GET_PERM(f->ip->type);
+
+    // Verificar si no tiene permiso de lectura
+    if(!(perm & PERM_READ)){
+      iunlock(f->ip);
+      return -1;
+    }
+
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
     iunlock(f->ip);
@@ -128,6 +137,7 @@ fileread(struct file *f, uint64 addr, int n)
 
   return r;
 }
+
 
 // Write to file f.
 // addr is a user virtual address.
@@ -146,12 +156,8 @@ filewrite(struct file *f, uint64 addr, int n)
       return -1;
     ret = devsw[f->major].write(1, addr, n);
   } else if(f->type == FD_INODE){
-    // write a few blocks at a time to avoid exceeding
-    // the maximum log transaction size, including
-    // i-node, indirect block, allocation blocks,
-    // and 2 blocks of slop for non-aligned writes.
-    // this really belongs lower down, since writei()
-    // might be writing a device like the console.
+    // Escribir unos pocos bloques a la vez para evitar exceder
+    // el tamaño máximo de transacción del registro.
     int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
     int i = 0;
     while(i < n){
@@ -161,22 +167,39 @@ filewrite(struct file *f, uint64 addr, int n)
 
       begin_op();
       ilock(f->ip);
+      ushort perm = GET_PERM(f->ip->type);
+
+      // Verificación de permisos
+      // Si el archivo es inmutable o no tiene permiso de escritura, fallar
+      if((perm & PERM_IMMUTABLE) || !(perm & PERM_WRITE)){
+        iunlock(f->ip);
+        end_op();
+        ret = -1;
+        break;
+      }
+
       if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
         f->off += r;
       iunlock(f->ip);
       end_op();
 
       if(r != n1){
-        // error from writei
+        // error de writei
         break;
       }
       i += r;
     }
-    ret = (i == n ? n : -1);
+    if(ret == -1){
+      // Fallo debido a permisos
+      ret = -1;
+    } else {
+      ret = (i == n ? n : -1);
+    }
   } else {
     panic("filewrite");
   }
 
   return ret;
 }
+
 

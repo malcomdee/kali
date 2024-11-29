@@ -136,7 +136,7 @@ sys_link(void)
   }
 
   ilock(ip);
-  if(ip->type == T_DIR){
+  if(GET_TYPE(ip->type) == T_DIR){
     iunlockput(ip);
     end_op();
     return -1;
@@ -214,7 +214,7 @@ sys_unlink(void)
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
-  if(ip->type == T_DIR && !isdirempty(ip)){
+  if(GET_TYPE(ip->type) == T_DIR && !isdirempty(ip)){
     iunlockput(ip);
     goto bad;
   }
@@ -222,7 +222,7 @@ sys_unlink(void)
   memset(&de, 0, sizeof(de));
   if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("unlink: writei");
-  if(ip->type == T_DIR){
+  if(GET_TYPE(ip->type) == T_DIR){
     dp->nlink--;
     iupdate(dp);
   }
@@ -256,7 +256,7 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+    if(type == T_FILE && (GET_TYPE(ip->type) == T_FILE || GET_TYPE(ip->type) == T_DEVICE))
       return ip;
     iunlockput(ip);
     return 0;
@@ -328,14 +328,40 @@ sys_open(void)
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if(GET_TYPE(ip->type) == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
       return -1;
     }
+    // Inicio de las verificaciones de permisos
+    ushort perm = GET_PERM(ip->type);
+    // Inicio de las verificaciones de permisos
+    // Si el archivo es inmutable (permiso 5), no permitir escritura
+    if(perm == 5 && (omode & (O_WRONLY | O_RDWR))){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+
+    // Verificar permisos de escritura
+    if((omode & (O_WRONLY | O_RDWR)) && !(perm & PERM_WRITE)){
+      // El archivo se abre en modo escritura, pero no tiene permiso de escritura
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+
+    // Verificar permisos de lectura
+    if((omode & (O_RDONLY | O_RDWR)) && !(perm & PERM_READ)){
+      // El archivo se abre en modo lectura, pero no tiene permiso de lectura
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    // Fin de las verificaciones de permisos
   }
 
-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+  if(GET_TYPE(ip->type) == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
@@ -349,7 +375,7 @@ sys_open(void)
     return -1;
   }
 
-  if(ip->type == T_DEVICE){
+  if(GET_TYPE(ip->type) == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
   } else {
@@ -360,7 +386,7 @@ sys_open(void)
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
 
-  if((omode & O_TRUNC) && ip->type == T_FILE){
+  if((omode & O_TRUNC) && GET_TYPE(ip->type) == T_FILE){
     itrunc(ip);
   }
 
@@ -369,6 +395,7 @@ sys_open(void)
 
   return fd;
 }
+
 
 uint64
 sys_mkdir(void)
@@ -419,7 +446,7 @@ sys_chdir(void)
     return -1;
   }
   ilock(ip);
-  if(ip->type != T_DIR){
+  if(GET_TYPE(ip->type)!= T_DIR){
     iunlockput(ip);
     end_op();
     return -1;
@@ -503,3 +530,51 @@ sys_pipe(void)
   }
   return 0;
 }
+
+// En kernel/sysfile.c
+uint64
+sys_chmod(void)
+{
+  char path[MAXPATH];
+  int mode;
+  struct inode *ip;
+
+  if(argstr(0, path, MAXPATH) < 0)
+    return -1;
+  argint(1, &mode);
+
+  begin_op();
+  if((ip = namei(path)) == 0){
+    end_op();
+    return -1;
+  }
+  ilock(ip);
+
+  ushort perm = GET_PERM(ip->type);
+
+  // Si el archivo es inmutable, no permitir cambiar permisos
+  if(perm == 5){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  // Si se intenta establecer el permiso a inmutable (5)
+  if(mode == 5){
+    perm = 5;
+  } else {
+    // Actualizar los permisos (asegurarse de que solo se usan los 8 bits inferiores)
+    perm = mode & 0xFF;
+  }
+
+  ushort ftype = GET_TYPE(ip->type);
+  ip->type = SET_TYPE_PERM(ftype, perm);
+
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
+
+

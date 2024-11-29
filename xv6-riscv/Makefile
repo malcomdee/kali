@@ -143,6 +143,7 @@ UPROGS=\
 	$U/_yosoytupadre\
 	$U/_test_priority\
 	$U/_protegido\
+	$U/_chmodtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

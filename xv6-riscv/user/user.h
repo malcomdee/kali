@@ -48,3 +48,7 @@ void free(void*);
 
 int mprotect(void *addr, int len);
 int munprotect(void *addr, int len);
+
+
+// En user/user.h
+int chmod(char *path, int mode);

@@ -110,6 +110,8 @@ extern uint64 sys_getancestor(void);
 extern uint64 sys_munprotect(void); 
 extern uint64 sys_mprotect(void); 
 
+extern uint64 sys_chmod(void);
+
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -138,6 +140,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getancestor] sys_getancestor, 
 [SYS_mprotect] sys_mprotect, 
 [SYS_munprotect] sys_munprotect, 
+[SYS_chmod] sys_chmod,
 };
 
 void
